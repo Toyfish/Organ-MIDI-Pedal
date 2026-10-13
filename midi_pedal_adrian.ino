@@ -30,14 +30,14 @@ const int BASE_NOTE = 36;       // 36 = C2 (lowest pedal note)
 // ============================================
 // SENSOR SETTINGS (CALIBRATE THESE!)
 // ============================================
-const int THRESHOLD = 512;      // ← CHANGED: Works with INPUT_PULLUP
+const int THRESHOLD = 1;      // ← CHANGED: Works with INPUT_PULLUP
 const int DEBOUNCE_DELAY = 10;  // milliseconds
 
 // ============================================
 // CALIBRATION MODE
 // ============================================
-const bool CALIBRATION_MODE = true;  // SET TO false AFTER FINDING THRESHOLD
-
+const bool CALIBRATION_MODE = false;  // SET TO false AFTER FINDING THRESHOLD
+const bool DEBUG_MODE = false;
 // ============================================
 // SENSOR STATE TRACKING
 // ============================================
@@ -59,7 +59,9 @@ void setup() {
   pinMode(MUX2_SIG, INPUT_PULLUP);  // ← CHANGED
   
   // Start serial for calibration and MIDI bridge
-  Serial.begin(9600);
+  //Serial.begin(9600);
+  Serial.begin(31250);
+
   
   if (CALIBRATION_MODE) {
     Serial.println("╔══════════════════════════════════════════════════════════╗");
@@ -81,43 +83,51 @@ void loop() {
     int sensorValue = readSensor(sensorIndex);
     
     // ===== CALIBRATION MODE =====
-    if (CALIBRATION_MODE) {
+    if (DEBUG_MODE) {
       Serial.print("Sensor ");
       Serial.print(sensorIndex);
       Serial.print(": ");
       Serial.println(sensorValue);
       delay(100);
-      continue;
+      //continue;
     }
     
     // ===== NORMAL MODE =====
     bool currentState = (sensorValue < THRESHOLD);
-    
+    if (DEBUG_MODE == true){
+      Serial.print("Current State: ");
+      Serial.println(currentState);
+    }
+
     if (currentState != lastState[sensorIndex]) {
       lastDebounceTime[sensorIndex] = millis();
     }
     
-    if ((millis() - lastDebounceTime[sensorIndex]) > DEBOUNCE_DELAY) {
-      if (currentState != lastState[sensorIndex]) {
-        lastState[sensorIndex] = currentState;
+    // if ((millis() - lastDebounceTime[sensorIndex]) > DEBOUNCE_DELAY) {
+    //   if (currentState != lastState[sensorIndex]) {
+    //     lastState[sensorIndex] = currentState;
         
         if (currentState) {
           // Pedal pressed - Send MIDI Note On via Serial
-          sendMIDI(0x90, BASE_NOTE + sensorIndex, 100);
-          Serial.print("Pedal ");
-          Serial.print(sensorIndex);
-          Serial.print(" - Note ON: ");
-          Serial.println(BASE_NOTE + sensorIndex);
+          sendMIDI(0x90, BASE_NOTE + sensorIndex, 10);
+          if (DEBUG_MODE == true){
+            Serial.print("Pedal ");
+            Serial.print(sensorIndex);
+            Serial.print(" - Note ON: ");
+            Serial.println(BASE_NOTE + sensorIndex);
+          }
         } else {
           // Pedal released - Send MIDI Note Off via Serial
           sendMIDI(0x80, BASE_NOTE + sensorIndex, 0);
-          Serial.print("Pedal ");
-          Serial.print(sensorIndex);
-          Serial.print(" - Note OFF: ");
-          Serial.println(BASE_NOTE + sensorIndex);
+          if (DEBUG_MODE == true){
+            Serial.print("Pedal ");
+            Serial.print(sensorIndex);
+            Serial.print(" - Note OFF: ");
+            Serial.println(BASE_NOTE + sensorIndex);
+          }
         }
-      }
-    }
+    //   }
+    // }
   }
   
   if (!CALIBRATION_MODE) {
@@ -166,7 +176,14 @@ void sendMIDI(byte command, byte pitch, byte velocity) {
   // MIDI messages are 3 bytes: Status, Data 1, Data 2
   // Status byte = command + (channel - 1)
   byte status = command | ((MIDI_CHANNEL - 1) & 0x0F);
-  
+  if (DEBUG_MODE == true){
+    Serial.print("MIDI message: ");
+    Serial.println(status);
+    Serial.print("Pitch: ");
+    Serial.println(pitch);
+    Serial.print("Velocity:");
+    Serial.println(velocity);
+  }
   Serial.write(status);
   Serial.write(pitch);
   Serial.write(velocity);
