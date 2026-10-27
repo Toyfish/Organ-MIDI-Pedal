@@ -32,16 +32,21 @@ const int BASE_NOTE = 36;       // 36 = C2 (lowest pedal note)
 // ============================================
 const int THRESHOLD = 1;      // ← CHANGED: Works with INPUT_PULLUP
 const int DEBOUNCE_DELAY = 10;  // milliseconds
+// ============================================
+// MIDI VELOCITY
+// ============================================
+const int midi_velocity = 100; // 0-127
 
 // ============================================
 // CALIBRATION MODE
 // ============================================
 const bool CALIBRATION_MODE = false;  // SET TO false AFTER FINDING THRESHOLD
-const bool DEBUG_MODE = false;
+const bool DEBUG_MODE = false; // SET to false before connecting to synthesizer
 // ============================================
 // SENSOR STATE TRACKING
 // ============================================
-bool lastState[30] = {false};
+bool lastState[30]        = {false};   // debounced, confirmed state
+bool rawState[30]         = {false};   // last raw read
 unsigned long lastDebounceTime[30] = {0};
 
 // ============================================
@@ -76,60 +81,41 @@ void setup() {
 // MAIN LOOP
 // ============================================
 void loop() {
-  // Scan all 30 sensors
   for (int sensorIndex = 0; sensorIndex < 30; sensorIndex++) {
-    
-    // Read the sensor value from the correct multiplexer
-    int sensorValue = readSensor(sensorIndex);
-    
-    // ===== CALIBRATION MODE =====
-    if (DEBUG_MODE) {
-      Serial.print("Sensor ");
-      Serial.print(sensorIndex);
-      Serial.print(": ");
-      Serial.println(sensorValue);
-      delay(100);
-      //continue;
-    }
-    
-    // ===== NORMAL MODE =====
-    bool currentState = (sensorValue < THRESHOLD);
-    if (DEBUG_MODE == true){
-      Serial.print("Current State: ");
-      Serial.println(currentState);
+
+    int  sensorValue  = readSensor(sensorIndex);
+    bool currentState = (sensorValue == 1);
+
+    // If the raw reading changed, reset the debounce timer
+    if (currentState != rawState[sensorIndex]) {
+      lastDebounceTime[sensorIndex] = millis();
+      rawState[sensorIndex]         = currentState;
     }
 
-    if (currentState != lastState[sensorIndex]) {
-      lastDebounceTime[sensorIndex] = millis();
-    }
-    
-    // if ((millis() - lastDebounceTime[sensorIndex]) > DEBOUNCE_DELAY) {
-    //   if (currentState != lastState[sensorIndex]) {
-    //     lastState[sensorIndex] = currentState;
-        
+    // Only accept the new state once it has been stable long enough
+    if ((millis() - lastDebounceTime[sensorIndex]) > DEBOUNCE_DELAY) {
+
+      // Edge detection: only act when the *confirmed* state changes
+      if (currentState != lastState[sensorIndex]) {
+        lastState[sensorIndex] = currentState;
+
         if (currentState) {
-          // Pedal pressed - Send MIDI Note On via Serial
-          sendMIDI(0x90, BASE_NOTE + sensorIndex, 10);
-          if (DEBUG_MODE == true){
-            Serial.print("Pedal ");
-            Serial.print(sensorIndex);
-            Serial.print(" - Note ON: ");
-            Serial.println(BASE_NOTE + sensorIndex);
+          sendMIDI(0x90, BASE_NOTE + sensorIndex, midi_velocity);   // Note On
+          if (DEBUG_MODE) {
+            Serial.print("Pedal "); Serial.print(sensorIndex);
+            Serial.print(" - Note ON: "); Serial.println(BASE_NOTE + sensorIndex);
           }
         } else {
-          // Pedal released - Send MIDI Note Off via Serial
-          sendMIDI(0x80, BASE_NOTE + sensorIndex, 0);
-          if (DEBUG_MODE == true){
-            Serial.print("Pedal ");
-            Serial.print(sensorIndex);
-            Serial.print(" - Note OFF: ");
-            Serial.println(BASE_NOTE + sensorIndex);
+          sendMIDI(0x80, BASE_NOTE + sensorIndex, 0);    // Note Off
+          if (DEBUG_MODE) {
+            Serial.print("Pedal "); Serial.print(sensorIndex);
+            Serial.print(" - Note OFF: "); Serial.println(BASE_NOTE + sensorIndex);
           }
         }
-    //   }
-    // }
+      }
+    }
   }
-  
+
   if (!CALIBRATION_MODE) {
     delay(5);
   }
@@ -167,6 +153,19 @@ void setMUXChannel(int channel) {
   digitalWrite(S1, (channel >> 1) & 1);
   digitalWrite(S2, (channel >> 2) & 1);
   digitalWrite(S3, (channel >> 3) & 1);
+
+  if (DEBUG_MODE == true){
+    Serial.print("channel: ");
+    Serial.println(channel);
+    Serial.print("S0: ");
+    Serial.println(channel & 1);
+    Serial.print("S1: ");
+    Serial.println((channel >> 1) & 1);
+    Serial.print("S2: ");
+    Serial.println((channel >> 2) & 1);
+    Serial.print("S3: ");
+    Serial.println((channel >> 3) & 1);
+  }
 }
 
 // ============================================
